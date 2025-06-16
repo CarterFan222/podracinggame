@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Podracer Infinite</title>
+  <style>
+    html, body {
+      margin: 0;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #000;
+    }
+    #ui {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      text-align: center;
+      background: rgba(255,255,255,0.05);
+      border-radius: 16px;
+      padding: 10px 20px;
+      backdrop-filter: blur(20px);
+      box-shadow: 0 0 20px rgba(255,255,255,0.1);
+    }
+    #startButton {
+      background: white;
+      color: black;
+      padding: 10px 20px;
+      border-radius: 12px;
+      font-weight: bold;
+      border: none;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: 0.3s;
+    }
+    #startButton:hover {
+      background: #ddd;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <h2>Podracer: Infinite</h2>
+    <p>High-speed reflex challenge in an endless canyon.</p>
+    <button id="startButton">Start Race</button>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
+  <script>
+    let scene, camera, renderer, racer, speed = 0.5, aiRacers = [];
+    let canyon = [], controls = { left: false, right: false };
+
+    document.getElementById('startButton').onclick = () => {
+      document.getElementById('ui').style.display = 'none';
+      init();
+      animate();
+    };
+
+    function init() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+      renderer = new THREE.WebGLRenderer();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      const light = new THREE.PointLight(0xffffff, 1);
+      light.position.set(0, 10, 10);
+      scene.add(light);
+
+      // Player podracer
+      const geo = new THREE.BoxGeometry(1, 0.2, 2);
+      const mat = new THREE.MeshStandardMaterial({ color: 0xffaa00 });
+      racer = new THREE.Mesh(geo, mat);
+      racer.position.y = 0.5;
+      scene.add(racer);
+
+      // Create canyon walls
+      for (let i = 0; i < 100; i++) {
+        const wallL = new THREE.Mesh(
+          new THREE.BoxGeometry(1, 10, 10),
+          new THREE.MeshStandardMaterial({ color: 0x222222 })
+        );
+        const wallR = wallL.clone();
+        wallL.position.set(-5, 0, -i * 10);
+        wallR.position.set(5, 0, -i * 10);
+        scene.add(wallL);
+        scene.add(wallR);
+        canyon.push(wallL, wallR);
+      }
+
+      // Add AI racers
+      for (let i = 0; i < 3; i++) {
+        const ai = new THREE.Mesh(
+          new THREE.BoxGeometry(1, 0.2, 2),
+          new THREE.MeshStandardMaterial({ color: 0x00ccff })
+        );
+        ai.position.set((Math.random() - 0.5) * 8, 0.5, -20 - Math.random() * 30);
+        aiRacers.push(ai);
+        scene.add(ai);
+      }
+
+      camera.position.y = 2;
+      window.addEventListener('resize', onWindowResize);
+      document.addEventListener('keydown', e => {
+        if (e.key === 'ArrowLeft' || e.key === 'a') controls.left = true;
+        if (e.key === 'ArrowRight' || e.key === 'd') controls.right = true;
+      });
+      document.addEventListener('keyup', e => {
+        if (e.key === 'ArrowLeft' || e.key === 'a') controls.left = false;
+        if (e.key === 'ArrowRight' || e.key === 'd') controls.right = false;
+      });
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Move forward
+      racer.position.z -= speed;
+      camera.position.z = racer.position.z + 5;
+      camera.position.x = racer.position.x;
+      camera.lookAt(racer.position);
+
+      if (controls.left) racer.position.x -= 0.1;
+      if (controls.right) racer.position.x += 0.1;
+
+      // Move AI racers forward
+      aiRacers.forEach(ai => {
+        ai.position.z -= speed * 1.1;
+        ai.position.x += (Math.random() - 0.5) * 0.05;
+        if (ai.position.z > racer.position.z + 5) {
+          ai.position.z = racer.position.z - 50 - Math.random() * 50;
+          ai.position.x = (Math.random() - 0.5) * 8;
+        }
+      });
+
+      // Loop canyon
+      canyon.forEach(wall => {
+        if (wall.position.z - racer.position.z > 50) {
+          wall.position.z -= 1000;
+        }
+      });
+
+      renderer.render(scene, camera);
+    }
+  </script>
+</body>
+</html>
