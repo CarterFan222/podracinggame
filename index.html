@@ -2,106 +2,148 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Podracer Infinite</title>
   <style>
     html, body {
       margin: 0;
       overflow: hidden;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       background: #000;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     }
-    #ui {
+    #menu {
       position: absolute;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(#000, #111);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
       color: white;
-      text-align: center;
-      background: rgba(255,255,255,0.05);
-      border-radius: 16px;
-      padding: 10px 20px;
-      backdrop-filter: blur(20px);
-      box-shadow: 0 0 20px rgba(255,255,255,0.1);
+      z-index: 9999;
+    }
+    #menu h1 {
+      font-size: 3em;
+      margin-bottom: 10px;
+    }
+    #menu p {
+      font-size: 1.2em;
+      margin-bottom: 20px;
     }
     #startButton {
-      background: white;
-      color: black;
-      padding: 10px 20px;
-      border-radius: 12px;
-      font-weight: bold;
+      padding: 12px 24px;
+      font-size: 18px;
+      background: #00ffcc;
       border: none;
+      border-radius: 10px;
       cursor: pointer;
-      margin-top: 10px;
-      transition: 0.3s;
     }
     #startButton:hover {
-      background: #ddd;
+      background: #00ccaa;
+    }
+    canvas {
+      display: block;
+    }
+    #deathScreen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: black;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+      font-weight: bold;
+      z-index: 10000;
+      opacity: 0;
+      transition: opacity 2s ease-in;
+    }
+    #deathScreen.show {
+      opacity: 1;
     }
   </style>
 </head>
 <body>
-  <div id="ui">
-    <h2>Podracer: Infinite</h2>
-    <p>High-speed reflex challenge in an endless canyon.</p>
+  <div id="menu">
+    <h1>🚀 Podracer Infinite</h1>
+    <p>Race through a twisting canyon. Crash = Game Over. Avoid terrain! Stay alive!</p>
     <button id="startButton">Start Race</button>
   </div>
+  <div id="deathScreen">💥 You Died</div>
   <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
   <script>
-    let scene, camera, renderer, racer, speed = 0.5, aiRacers = [];
-    let canyon = [], controls = { left: false, right: false };
+    let scene, camera, renderer, racer, canyon = [], aiRacers = [], road = [], explosionSound;
+    let speed = 1, controls = { left: false, right: false }, isRunning = false, crash = false;
+    const totalSegments = 1000;
 
     document.getElementById('startButton').onclick = () => {
-      document.getElementById('ui').style.display = 'none';
+      document.getElementById('menu').style.display = 'none';
       init();
       animate();
+      const music = new Audio('https://cdn.pixabay.com/download/audio/2022/03/15/audio_8dfc03479f.mp3');
+      music.loop = true;
+      music.volume = 0.5;
+      music.play();
     };
 
     function init() {
       scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-      renderer = new THREE.WebGLRenderer();
+      camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.1, 1000);
+      renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       document.body.appendChild(renderer.domElement);
 
-      const light = new THREE.PointLight(0xffffff, 1);
-      light.position.set(0, 10, 10);
-      scene.add(light);
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      const directionalLight = new THREE.DirectionalLight(0xffcc99, 1);
+      directionalLight.position.set(5, 10, 7.5);
+      scene.add(ambientLight);
+      scene.add(directionalLight);
 
-      // Player podracer
-      const geo = new THREE.BoxGeometry(1, 0.2, 2);
-      const mat = new THREE.MeshStandardMaterial({ color: 0xffaa00 });
+      const geo = new THREE.BoxGeometry(1.2, 0.3, 0.3);
+      const mat = new THREE.MeshStandardMaterial({ color: 0xff9900 });
       racer = new THREE.Mesh(geo, mat);
-      racer.position.y = 0.5;
+      racer.position.set(0, 0.5, 0);
       scene.add(racer);
 
-      // Create canyon walls
-      for (let i = 0; i < 100; i++) {
-        const wallL = new THREE.Mesh(
-          new THREE.BoxGeometry(1, 10, 10),
-          new THREE.MeshStandardMaterial({ color: 0x222222 })
-        );
-        const wallR = wallL.clone();
-        wallL.position.set(-5, 0, -i * 10);
-        wallR.position.set(5, 0, -i * 10);
-        scene.add(wallL);
-        scene.add(wallR);
-        canyon.push(wallL, wallR);
+      for (let i = 0; i < totalSegments; i++) {
+        let curve = Math.sin(i * 0.1) * 4;
+        const left = makeWall(curve - 6, i * -5, true);
+        const right = makeWall(curve + 6, i * -5, true);
+        canyon.push(left, right);
+
+        if (i % 12 === 0) {
+          const chunk = makeWall(curve + (Math.random() - 0.5) * 8, i * -5, false);
+          canyon.push(chunk);
+        }
+
+        const roadGeom = new THREE.BoxGeometry(10, 0.1, 5);
+        const roadMat = new THREE.MeshStandardMaterial({ color: 0x884422 });
+        const roadMesh = new THREE.Mesh(roadGeom, roadMat);
+        roadMesh.position.set(curve, -0.05, i * -5);
+        scene.add(roadMesh);
+        road.push(roadMesh);
       }
 
-      // Add AI racers
       for (let i = 0; i < 3; i++) {
-        const ai = new THREE.Mesh(
-          new THREE.BoxGeometry(1, 0.2, 2),
-          new THREE.MeshStandardMaterial({ color: 0x00ccff })
-        );
-        ai.position.set((Math.random() - 0.5) * 8, 0.5, -20 - Math.random() * 30);
+        const ai = racer.clone();
+        ai.material = new THREE.MeshStandardMaterial({ color: 0x00ccff });
+        ai.position.set((Math.random() - 0.5) * 8, 0.5, -10 - Math.random() * 100);
         aiRacers.push(ai);
         scene.add(ai);
       }
 
-      camera.position.y = 2;
-      window.addEventListener('resize', onWindowResize);
+      camera.position.set(0, 3, 5);
+      camera.lookAt(racer.position);
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
       document.addEventListener('keydown', e => {
         if (e.key === 'ArrowLeft' || e.key === 'a') controls.left = true;
         if (e.key === 'ArrowRight' || e.key === 'd') controls.right = true;
@@ -110,42 +152,59 @@
         if (e.key === 'ArrowLeft' || e.key === 'a') controls.left = false;
         if (e.key === 'ArrowRight' || e.key === 'd') controls.right = false;
       });
+
+      isRunning = true;
     }
 
-    function onWindowResize() {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+    function makeWall(x, z, isCanyon) {
+      const height = isCanyon ? 6 + Math.random() * 3 : 2 + Math.random() * 2;
+      const geo = new THREE.BoxGeometry(2, height, 5);
+      const color = isCanyon ? 0xcc7744 : 0xaa3333;
+      const mat = new THREE.MeshStandardMaterial({ color });
+      const wall = new THREE.Mesh(geo, mat);
+      wall.position.set(x, height / 2 - 0.05, z);
+      wall.userData.isObstacle = true;
+      scene.add(wall);
+      return wall;
+    }
+
+    function checkCollision(obj1, obj2) {
+      const box1 = new THREE.Box3().setFromObject(obj1);
+      const box2 = new THREE.Box3().setFromObject(obj2);
+      return box1.intersectsBox(box2);
     }
 
     function animate() {
+      if (!isRunning || crash) return;
       requestAnimationFrame(animate);
 
-      // Move forward
+      if (controls.left) racer.position.x -= 0.2;
+      if (controls.right) racer.position.x += 0.2;
       racer.position.z -= speed;
+
+      camera.position.x += (racer.position.x - camera.position.x) * 0.1;
       camera.position.z = racer.position.z + 5;
-      camera.position.x = racer.position.x;
       camera.lookAt(racer.position);
 
-      if (controls.left) racer.position.x -= 0.1;
-      if (controls.right) racer.position.x += 0.1;
-
-      // Move AI racers forward
       aiRacers.forEach(ai => {
-        ai.position.z -= speed * 1.1;
-        ai.position.x += (Math.random() - 0.5) * 0.05;
-        if (ai.position.z > racer.position.z + 5) {
+        ai.position.z -= speed * 1.05;
+        ai.position.x += (Math.random() - 0.5) * 0.1;
+        if (ai.position.z > racer.position.z + 10) {
           ai.position.z = racer.position.z - 50 - Math.random() * 50;
-          ai.position.x = (Math.random() - 0.5) * 8;
+          ai.position.x = (Math.random() - 0.5) * 10;
         }
       });
 
-      // Loop canyon
-      canyon.forEach(wall => {
-        if (wall.position.z - racer.position.z > 50) {
-          wall.position.z -= 1000;
+      for (let part of canyon) {
+        if (part.userData.isObstacle && checkCollision(part, racer)) {
+          crash = true;
+          const boom = new Audio('https://cdn.pixabay.com/download/audio/2022/03/08/audio_4fd348ed20.mp3');
+          boom.play();
+          const deathScreen = document.getElementById('deathScreen');
+          setTimeout(() => deathScreen.classList.add('show'), 1000);
+          return;
         }
-      });
+      }
 
       renderer.render(scene, camera);
     }
